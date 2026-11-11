@@ -81,7 +81,7 @@ Web 和桌面端共享[代码工作工具偏好](../../packages/client/ui-settin
 恢复方式由数据语义决定：
 
 - 持久 Session journal 校验逻辑 seq range，并根据每个 generation 的 opening snapshot 替换窗口；`page()` 提供更早历史并修复后续 range gap。
-- Session control 与 Workspace stream 在断开期间保留最后一次发布的值，再用新的 opening baseline 原子替换。
+- Session control 与 Workspace stream 在断开期间保留最后一次发布的值，再用新的 opening baseline 原子替换。Workspace controller 会把以 `gateway/stream-unavailable` 结束的 follow 流替换为新的 logical stream，因为失败的 logical stream 无法重启。
 - 普通 forwarded notification 不会 replay。需要可靠恢复的 stateful domain 必须提供 baseline、cursor 或显式 query；scoped waterfall 保留自身的 request lifetime。
 
 架构中没有统一的 Client `Runtime`、`HostFrame`、`events.mux`、`events.host` 或通用 `resync()` API。Connection 公开 generation state，Gateway 管理 logical stream，Client model 则按自身数据定义 replacement 或 resume 语义。

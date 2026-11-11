@@ -101,22 +101,26 @@ describe('Workspace Controller Client apply', () => {
     })
   })
 
-  pluginTest('publishes exhausted carrier retries as a gateway/stream-unavailable error state', async ({ mock, start }) => {
-    // Four consecutive carrier losses exhaust the Gateway's delayed retry budget,
-    // so the escaping carrier failure crosses the stream boundary marked.
+  pluginTest('reopens the follow stream after the carrier retry budget is exhausted', async ({ mock, start }) => {
+    // Four consecutive carrier losses exhaust the Gateway budget, so the failed
+    // logical stream cannot be restarted; the control opens a replacement after
+    // its first delay and the fresh baseline restores the model.
     const client = await pluginClient(mock, start, followGenerations([
       carrierLoss('generation lost'),
       carrierLoss('generation lost'),
       carrierLoss('generation lost'),
       carrierLoss('generation lost'),
+      openStream([baseline('recovered')]),
     ]))
     await vi.waitFor(() => {
       expect(client.ctx.workspaces.list.getSnapshot()).toMatchObject({
-        state: 'error',
-        error: { code: 'gateway/stream-unavailable', message: 'generation lost' },
+        phase: 'ready',
+        state: 'idle',
+        items: [{ workspaceId: 'recovered' }],
       })
     }, { timeout: 10_000 })
-    expect(streamStates(client.mock)).toEqual(['failed', 'failed', 'failed', 'failed'])
+    expect(mock.log.requests(FOLLOW)).toHaveLength(5)
+    expect(streamStates(client.mock)).toEqual(['failed', 'failed', 'failed', 'failed', 'open'])
   })
 
   pluginTest('marks carrier loss while retrying and publishes a later protocol failure', async ({ mock, start }) => {

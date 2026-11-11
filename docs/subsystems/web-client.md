@@ -81,7 +81,7 @@ Physical and logical recovery are separate. Gateway mux restores the physical We
 Recovery follows the data's semantics:
 
 - A durable Session journal validates logical sequence ranges and replaces its window from every generation's opening snapshot; `page()` supplies older history and repairs any later range gap.
-- Session control and Workspace streams retain the last published value while disconnected, then atomically replace it from a fresh opening baseline.
+- Session control and Workspace streams retain the last published value while disconnected, then atomically replace it from a fresh opening baseline. The Workspace controller replaces a follow stream that ends as `gateway/stream-unavailable` with a fresh logical stream, because a failed logical stream cannot be restarted.
 - Ordinary forwarded notifications are not replayed. Stateful domains need a baseline, cursor, or explicit query; scoped waterfalls retain their own request lifetime.
 
 There is no monolithic Client `Runtime`, `HostFrame`, `events.mux`, `events.host`, or universal `resync()` API. The Connection exposes generation state, Gateway owns logical stream supervision, and each Client model defines replacement or resume semantics appropriate to its data.

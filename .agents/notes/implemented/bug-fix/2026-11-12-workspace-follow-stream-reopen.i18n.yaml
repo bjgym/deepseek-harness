@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-11-12-workspace-follow-stream-reopen.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-11-12-workspace-follow-stream-reopen.md
+/agent-note-workspace-follow-stream-reopen:
+  en: 2f85123353db9e81
+  zh: 0fb603cb4db3f8da
+/agent-note-workspace-follow-stream-reopen/problem:
+  en: bfeb6d138431f9c0
+  zh: f1ea3ba3dae86b8b
+/agent-note-workspace-follow-stream-reopen/decision:
+  en: 115a293b30ed1c60
+  zh: e4f3bc58d1b86129
+/agent-note-workspace-follow-stream-reopen/alternatives-considered:
+  en: bf27f992fe01b699
+  zh: 88b0dbbc847b96bf
+/agent-note-workspace-follow-stream-reopen/consequences:
+  en: 0784ad5b6e3ad117
+  zh: 248062a427e41fe0
