@@ -4,6 +4,19 @@ import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import { RemoteStreamCarrierError } from './stream-client.ts'
 
+/**
+ * Delays before each carrier retry while the connection still reports a
+ * generation. The list length is the retry budget: a stream that keeps losing
+ * its carrier while the connection looks healthy stops after the last delay
+ * instead of reconnecting forever, while a transient loss within the budget
+ * recovers without ending the logical stream. The first delay also lets the
+ * Connection publish a generation invalidation before the next open attempt.
+ */
+const CARRIER_RETRY_DELAYS_MS: readonly number[] = [250, 500, 1_000]
+
+/** Terminal codes this client-owned supervisor produces; both carry no details. */
+type TerminalStreamCode = 'gateway/internal' | 'gateway/stream-unavailable'
+
 /** One item annotated with the physical Remote-stream generation that delivered it. */
 export interface RemoteStreamItem<Item> {
   /** Monotone physical generation number within this logical stream. */
@@ -31,10 +44,10 @@ export interface RemoteStreamOptions<Item> {
 /**
  * Reopens one logical Remote stream across carrier generations.
  *
- * Connection owns physical retry timing; Gateway performs each requested
- * replacement. The domain consumer owns its opening item and every later
- * item, and calls {@link RemoteStreamItem.accept} only after validating the
- * opening baseline or cursor.
+ * Connection owns physical retry timing; Gateway paces its own bounded carrier
+ * retries and performs each requested replacement. The domain consumer owns its
+ * opening item and every later item, and calls {@link RemoteStreamItem.accept}
+ * only after validating the opening baseline or cursor.
  */
 export class RemoteStream<Item> implements AsyncIterable<RemoteStreamItem<Item>> {
   private readonly lifetime = new AbortController()
@@ -138,7 +151,7 @@ export class RemoteStream<Item> implements AsyncIterable<RemoteStreamItem<Item>>
           } catch (retryError) {
             if (isAborted(this.lifetime.signal)) return
             if (revision !== this.revision) continue
-            throw terminalStreamFailure(retryError)
+            throw terminalStreamFailure(retryError, 'gateway/stream-unavailable')
           }
         } finally {
           this.generationAbort = undefined
@@ -165,8 +178,10 @@ async function waitForRemoteStreamRetry(
 ): Promise<void> {
   signal.throwIfAborted()
   if (connection.generation.getSnapshot() !== undefined) {
-    if (attempt === 1) return
-    throw error
+    const delayMs = CARRIER_RETRY_DELAYS_MS[attempt - 1]
+    if (delayMs === undefined) throw error
+    await sleep(delayMs, signal)
+    return
   }
   await new Promise<void>((resolve, reject) => {
     const subscription: {
@@ -201,15 +216,35 @@ async function waitForRemoteStreamRetry(
  * discriminate failures by code, so an unmarked throw reads as a local bug.
  * Marked failures pass through verbatim. The carrier class never escapes as a
  * terminal outcome — it stays the retry-internal signal fed to `carrierFailed`
- * and the `ended(true)` retry trigger.
+ * and the `ended(true)` retry trigger; an exhausted retry budget leaves this
+ * function as `gateway/stream-unavailable`.
+ * @param error - the escaped failure.
+ * @param code - terminal code for an unmarked failure.
+ * @returns the failure to throw across the stream boundary.
  */
-function terminalStreamFailure(error: unknown): Error {
+function terminalStreamFailure(
+  error: unknown,
+  code: TerminalStreamCode = 'gateway/internal',
+): Error {
   return remoteErrorOf(error) ?? new RemoteError(
-    'gateway/internal',
+    code,
     error instanceof Error ? error.message : String(error),
     {},
     { cause: error },
   )
+}
+
+/** Resolve after `delayMs`, or early when the generation is replaced or disposed. */
+function sleep(delayMs: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, delayMs)
+    signal.addEventListener('abort', done, { once: true })
+    function done(): void {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', done)
+      resolve()
+    }
+  })
 }
 
 function isAborted(signal: AbortSignal): boolean {

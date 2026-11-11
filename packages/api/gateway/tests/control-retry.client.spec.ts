@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
 import {
@@ -78,6 +78,8 @@ function supervisor<Item>(
 
 describe('RemoteStream', () => {
   it('annotates replacement generations and resets retry state after acceptance', async () => {
+    vi.useFakeTimers()
+    onTestFinished(() => { vi.useRealTimers() })
     const source = hostSource(true)
     const stream = supervisor(source.connection, [
       { values: ['first'], terminal: new RemoteStreamCarrierError('first lost') },
@@ -89,7 +91,9 @@ describe('RemoteStream', () => {
     expect(first).toMatchObject({ done: false, value: { generation: 1, value: 'first' } })
     if (first.done) throw new Error('fixture generation ended early')
     first.value.accept()
-    const second = await iterator.next()
+    const secondPending = iterator.next()
+    await vi.advanceTimersByTimeAsync(250)
+    const second = await secondPending
     expect(second).toMatchObject({ done: false, value: { generation: 2, value: 'second' } })
     if (second.done) throw new Error('fixture replacement ended early')
     second.value.accept()
@@ -97,25 +101,51 @@ describe('RemoteStream', () => {
     await stream.dispose()
   })
 
-  it('permits one isolated retry while the Host remains available', async () => {
+  it('recovers carrier losses within the retry budget while the Host remains available', async () => {
+    vi.useFakeTimers()
+    onTestFinished(() => { vi.useRealTimers() })
     const source = hostSource(true)
     const first = new RemoteStreamCarrierError('first carrier failure')
-    const repeated = new RemoteStreamCarrierError('isolated retry failed')
+    const second = new RemoteStreamCarrierError('second carrier failure')
     const carrierFailed = vi.fn<(error: RemoteStreamCarrierError) => void>()
     const stream = supervisor(source.connection, [
       { terminal: first },
-      { terminal: repeated },
+      { terminal: second },
+      { values: ['ready'], hold: true },
     ], carrierFailed)
 
-    await expect(stream[Symbol.asyncIterator]().next()).rejects.toMatchObject({
+    const pending = stream[Symbol.asyncIterator]().next()
+    await vi.advanceTimersByTimeAsync(250 + 500)
+    await expect(pending).resolves.toMatchObject({ value: { generation: 3, value: 'ready' } })
+    expect(carrierFailed.mock.calls.map(([error]) => error)).toEqual([first, second])
+    await stream.dispose()
+  })
+
+  it('ends as gateway/stream-unavailable after the carrier retry budget is exhausted', async () => {
+    vi.useFakeTimers()
+    onTestFinished(() => { vi.useRealTimers() })
+    const source = hostSource(true)
+    const failures = [1, 2, 3, 4].map(
+      attempt => new RemoteStreamCarrierError(`carrier failure ${String(attempt)}`),
+    )
+    const carrierFailed = vi.fn<(error: RemoteStreamCarrierError) => void>()
+    const stream = supervisor(
+      source.connection,
+      failures.map(terminal => ({ terminal })),
+      carrierFailed,
+    )
+
+    const pending = stream[Symbol.asyncIterator]().next().catch((error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(250 + 500 + 1_000)
+    await expect(pending).resolves.toMatchObject({
       isDSHRemoteError: true,
-      code: 'gateway/internal',
-      message: 'isolated retry failed',
+      code: 'gateway/stream-unavailable',
+      message: 'carrier failure 4',
       details: {},
-      cause: repeated,
+      cause: failures[3],
     })
-    expect(carrierFailed).toHaveBeenNthCalledWith(1, first)
-    expect(carrierFailed).toHaveBeenNthCalledWith(2, repeated)
+    expect(carrierFailed.mock.calls.map(([error]) => error)).toEqual(failures)
+    await stream.dispose()
   })
 
   it('folds a non-Error terminal escape into a marked gateway/internal failure', async () => {
@@ -197,6 +227,30 @@ describe('RemoteStream', () => {
 
     await stream.dispose()
     await expect(pending).resolves.toEqual({ done: true, value: undefined })
+  })
+
+  it('returns quietly when disposal interrupts a pending retry', async () => {
+    const subscribed = Promise.withResolvers<undefined>()
+    const connection = {
+      generation: {
+        getSnapshot: () => undefined,
+        subscribe: () => {
+          subscribed.resolve(undefined)
+          return () => {}
+        },
+      },
+    }
+    const stream = new RemoteStream(connection, {
+      name: 'fixture stream',
+      open: scripted([{ terminal: new RemoteStreamCarrierError('offline') }]),
+      ended: () => new Error('ended'),
+    })
+    const pending = stream[Symbol.asyncIterator]().next()
+    await subscribed.promise
+    const disposing = stream.dispose()
+
+    await expect(pending).resolves.toEqual({ done: true, value: undefined })
+    await disposing
   })
 
   it('contains a Host publication during subscription setup', async () => {

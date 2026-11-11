@@ -34,6 +34,12 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'gateway/result-invalid': TypertGatewayFaultDetails
     'gateway/service-unavailable': TypertGatewayFaultDetails
     'gateway/signature-invalid': TypertGatewayFaultDetails
+    /**
+     * A logical stream could not be re-established within its bounded carrier
+     * retry budget. Client-side only: the Host never throws this code, and the
+     * stream consumer decides whether to reopen a new logical stream.
+     */
+    'gateway/stream-unavailable': {}
     'gateway/uplink-overflow': TypertGatewayFaultDetails
   }
 }

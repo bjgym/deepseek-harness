@@ -101,20 +101,22 @@ describe('Workspace Controller Client apply', () => {
     })
   })
 
-  pluginTest('publishes exhausted carrier retries as a gateway/internal error state', async ({ mock, start }) => {
-    // Neither generation reaches an accepted baseline, so the retry budget runs
-    // out and the escaping carrier failure crosses the stream boundary marked.
+  pluginTest('publishes exhausted carrier retries as a gateway/stream-unavailable error state', async ({ mock, start }) => {
+    // Four consecutive carrier losses exhaust the Gateway's delayed retry budget,
+    // so the escaping carrier failure crosses the stream boundary marked.
     const client = await pluginClient(mock, start, followGenerations([
       carrierLoss('generation lost'),
-      carrierLoss('generation lost again'),
+      carrierLoss('generation lost'),
+      carrierLoss('generation lost'),
+      carrierLoss('generation lost'),
     ]))
     await vi.waitFor(() => {
       expect(client.ctx.workspaces.list.getSnapshot()).toMatchObject({
         state: 'error',
-        error: { code: 'gateway/internal', message: 'generation lost again' },
+        error: { code: 'gateway/stream-unavailable', message: 'generation lost' },
       })
-    })
-    expect(streamStates(client.mock)).toEqual(['failed', 'failed'])
+    }, { timeout: 10_000 })
+    expect(streamStates(client.mock)).toEqual(['failed', 'failed', 'failed', 'failed'])
   })
 
   pluginTest('marks carrier loss while retrying and publishes a later protocol failure', async ({ mock, start }) => {

@@ -76,7 +76,7 @@ Web and desktop share the [Coding Tools preference](../../packages/client/ui-set
 
 ## Reconnection
 
-Physical and logical recovery are separate. Gateway mux restores the physical WebSocket; each `RemoteStream` reopens its own logical source when the Connection publishes a usable generation. A carrier failure is retryable, while a business error, malformed opening item, or protocol violation is terminal for the owning logical stream.
+Physical and logical recovery are separate. Gateway mux restores the physical WebSocket; each `RemoteStream` reopens its own logical source when the Connection publishes a usable generation, and retries a carrier loss with bounded backoff while the generation remains available. Exhausted carrier retries end the logical stream as `gateway/stream-unavailable`, while a business error, malformed opening item, or protocol violation is terminal.
 
 Recovery follows the data's semantics:
 

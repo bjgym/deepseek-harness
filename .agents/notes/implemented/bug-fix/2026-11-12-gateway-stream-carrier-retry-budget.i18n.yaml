@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-11-12-gateway-stream-carrier-retry-budget.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-11-12-gateway-stream-carrier-retry-budget.md
+/agent-note-gateway-logical-stream-carrier-retry-budget:
+  en: e19df0648c7f4800
+  zh: ff249caacb1bbb49
+/agent-note-gateway-logical-stream-carrier-retry-budget/problem:
+  en: 9cb2fdd66c00e0c4
+  zh: 65eaa08935dd1acb
+/agent-note-gateway-logical-stream-carrier-retry-budget/decision:
+  en: 464c4476e3fa451b
+  zh: 2e9991e469299d7c
+/agent-note-gateway-logical-stream-carrier-retry-budget/alternatives-considered:
+  en: 8b0d5a923fd50aea
+  zh: ddb22244dbe7f199
+/agent-note-gateway-logical-stream-carrier-retry-budget/consequences:
+  en: a21dadc0a79e2570
+  zh: fa68b7d54f5a69ef

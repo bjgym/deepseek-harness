@@ -99,17 +99,17 @@ describe('Session open', () => {
     expect(snapshot.openError?.code).toBe('session/not-found')
   })
 
-  it('lands exhausted carrier retries in openState=error as gateway/internal', async ({ mock, start }) => {
+  it('lands exhausted carrier retries in openState=error as gateway/stream-unavailable', async ({ mock, start }) => {
     const session = await sessionBench(mock, start, SID)
-    // Two consecutive carrier losses before any opening is accepted exhaust the
+    // Four consecutive carrier losses before any opening is accepted exhaust the
     // Gateway's retry budget; the escaping failure crosses the stream boundary marked.
     mock.stream(FOLLOW, followScript(() => Promise.reject(new RemoteStreamCarrierError('history carrier down'))))
     await session.open()
     expect(session.getSnapshot().openState).toBe('error')
     expect(session.getSnapshot().openError).toMatchObject({
-      code: 'gateway/internal', message: 'history carrier down',
+      code: 'gateway/stream-unavailable', message: 'history carrier down',
     })
-    expect(mock.log.requests(FOLLOW)).toHaveLength(2)
+    expect(mock.log.requests(FOLLOW)).toHaveLength(4)
   })
 
   it('lands a Gateway-marked stream failure in openState=error', async ({ mock, start }) => {
